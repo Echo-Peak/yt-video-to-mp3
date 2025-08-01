@@ -1,0 +1,239 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Youtube Video to MP3 Converter - Static Site Template
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    MemorySize: 128
+    Timeout: 10
+
+Resources:
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: YouTubeWebSocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: Prod
+      AutoDeploy: true
+
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: clientID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: clientID
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  ### SQS Queue to receive task completion
+  ConversionResultsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: conversion-results-queue
+
+
+
+  StaticSiteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/
+      Handler: serveStaticSite.handler
+      Runtime: nodejs18.x
+      MemorySize: 128
+      Timeout: 10
+      Events:
+        Web:
+          Type: Api
+          Properties:
+            Path: /
+            Method: GET
+
+  NotifyClient:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: build/
+        Handler: notifyClient.handler
+        Environment:
+          Variables:
+            CONNECTIONS_TABLE: !Ref ConnectionsTable
+            WS_ENDPOINT: !Sub "${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+        Events:
+          SQS:
+            Type: SQS
+            Properties:
+              Queue: !GetAtt ConversionResultsQueue.Arn
+        Policies:
+          - DynamoDBReadPolicy:
+              TableName: !Ref ConnectionsTable
+          - Statement:
+              - Effect: Allow
+                Action:
+                  - execute-api:ManageConnections
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/*/@connections/*"
+
+
+  ConnectRoute:
+      Type: AWS::ApiGatewayV2::Route
+      Properties:
+        ApiId: !Ref WebSocketApi
+        RouteKey: $connect
+        AuthorizationType: NONE
+        Target: !Sub "integrations/${WebSocketConnectIntegration}"
+
+    DisconnectRoute:
+      Type: AWS::ApiGatewayV2::Route
+      Properties:
+        ApiId: !Ref WebSocketApi
+        RouteKey: $disconnect
+        AuthorizationType: NONE
+        Target: !Sub "integrations/${WebSocketDisconnectIntegration}"
+
+  WebSocketConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub
+        - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConnectLambda.Arn}/invocations
+        - {}
+      IntegrationMethod: POST
+
+  WebSocketDisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub
+        - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DisconnectLambda.Arn}/invocations
+        - {}
+      IntegrationMethod: POST
+
+
+  ConnectLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/
+      Handler: connect.handler
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+      Events:
+        ConnectRoute:
+          Type: Api
+          Properties:
+            ApiId: !Ref WebSocketApi
+            RouteKey: $connect
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+
+  DisconnectLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/
+      Handler: disconnect.handler
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+      Events:
+        DisconnectRoute:
+          Type: Api
+          Properties:
+            ApiId: !Ref WebSocketApi
+            RouteKey: $disconnect
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+            
+  FetchMetadata:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/
+      Handler: fetchMetadata.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: logs:CreateLogGroup
+              Resource: "*"
+
+  ###########################################
+  # Lambda: Start Step Function (convert route)
+  ###########################################
+
+  TriggerConversion:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: build/
+      Handler: triggerConversion.handler
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref ConversionWorkflow
+      Events:
+        WebSocketConvert:
+          Type: Api
+          Properties:
+            ApiId: !Ref WebSocketApi
+            RouteKey: convert
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: states:StartExecution
+              Resource: !Ref ConversionWorkflow
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+
+    #######################################
+  # Step Function: ConversionWorkflow
+  #######################################
+
+  ConversionWorkflow:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: YtConversionStateMachine
+      DefinitionUri: statemachine/conversion.asl.json
+      Role: !GetAtt ConversionWorkflowRole.Arn
+
+  ConversionWorkflowRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AllowStepLambdaAndECS
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !GetAtt FetchMetadata.Arn
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                  - iam:PassRole
+                Resource: "*"
+
+Outputs:
+  WebSocketUrl:
+    Description: WebSocket endpoint
+    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+  QueueUrl:
+    Description: SQS queue URL for conversion results
+    Value: !Ref ConversionResultsQueue
+  StateMachineName:
+    Description: Name of the Step Function
+    Value: !Ref ConversionWorkflow

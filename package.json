@@ -1,0 +1,14 @@
+{
+  "name": "yt-video-to-mp3",
+  "version": "1.0.0",
+  "description": "### Inspiration",
+  "main": "index.js",
+  "scripts": {
+    "build": "",
+    "deploy-backend": "cd ./backend && npm run build && cdk deploy --all --require-approval never",
+    "deploy-frontend": "cd ./frontend && npm run build-prod && sam build && sam deploy --guided"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "outDir": "./build",
+    "strict": true,
+    "esModuleInterop": true,
+    "baseUrl": "./"
+  },
+  "include": [
+    "serveStaticSite.ts",
+    "triggerConversion.ts",
+    "connect.ts",
+    "disconnect.ts"
+  ],
+  "exclude": ["node_modules", "../public"]
+}

@@ -1,0 +1,102 @@
+{
+  "Comment": "YouTube conversion workflow",
+  "StartAt": "FetchMetadata",
+  "States": {
+    "FetchMetadata": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "FetchMetadata",
+        "Payload.$": "$"
+      },
+      "Next": "DecideResources"
+    },
+    "DecideResources": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.Payload.duration",
+          "NumericGreaterThan": 1800,
+          "Next": "RunLargeTask"
+        }
+      ],
+      "Default": "RunSmallTask"
+    },
+    "RunSmallTask": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "LaunchType": "FARGATE",
+        "Cluster": "yt-mp3-cluster",
+        "TaskDefinition": "yt-task-small",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["subnet-abc", "subnet-def"],
+            "SecurityGroups": ["sg-xyz"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "yt-converter",
+              "Environment": [
+                {
+                  "Name": "YOUTUBE_URL",
+                  "Value.$": "$.Payload.url"
+                },
+                {
+                  "Name": "VIDEO_ID",
+                  "Value.$": "$.Payload.videoID"
+                },
+                {
+                  "Name": "CLIENT_ID",
+                  "Value.$": "$.Payload.clientID"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "End": true
+    },
+    "RunLargeTask": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "LaunchType": "FARGATE",
+        "Cluster": "yt-mp3-cluster",
+        "TaskDefinition": "yt-task-large",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["subnet-abc", "subnet-def"],
+            "SecurityGroups": ["sg-xyz"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "yt-converter",
+              "Environment": [
+                {
+                  "Name": "YOUTUBE_URL",
+                  "Value.$": "$.Payload.url"
+                },
+                {
+                  "Name": "VIDEO_ID",
+                  "Value.$": "$.Payload.videoID"
+                },
+                {
+                  "Name": "CLIENT_ID",
+                  "Value.$": "$.Payload.clientID"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "End": true
+    }
+  }
+}
