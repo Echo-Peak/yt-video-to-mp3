@@ -5,9 +5,9 @@ import { resolve } from "path";
 export default defineConfig({
   build: {
     target: "esnext",
-    minify: true,
+    minify: false,
     emptyOutDir: true,
-    outDir: resolve(__dirname, "../build/dist"),
+    outDir: resolve(__dirname, "../functions/frontend/dist/public"),
   },
   plugins: [viteSingleFile()],
 });
