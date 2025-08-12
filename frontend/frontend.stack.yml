@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Front end for YouTube Video to MP3 Converter
+
+Parameters:
+  VideoSourceCacheTableName:
+    Type: String
+  VideoSourceCacheTableArn:
+    Type: String
+  UserConnectionsTableName:
+    Type: String
+  UserConnectionsTableArn:
+    Type: String
+  ConversionWorkflow:
+    Type: String
+
+Resources:
+  FrontendApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Staging
+      EndpointConfiguration: REGIONAL
+      Name: YTToMp3ConverterApi
+      Auth:
+        ApiKeyRequired: true
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          Throttle:
+            BurstLimit: 10
+            RateLimit: 15
+
+  FrontEndDefaultStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref FrontendApi
+      StageName: Staging
+      AutoDeploy: true
+
+  SinglePageAppLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/ui/dist/
+      Handler: serveStaticSite.handler
+      Runtime: nodejs22.x
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          API_URL: !Ref FrontendApi
+      Events:
+        Web:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FrontendApi
+            Path: /
+            Method: GET
+
+  QueryStatusLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/queryStatus/dist/
+      Handler: queryStatus.handler
+      Runtime: nodejs22.x
+      MemorySize: 128
+      Timeout: 10
+      Events:
+        Web:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FrontendApi
+            Path: /status
+            Method: POST
+      Policies:
+        - AWSLambdaBasicExecutionRole
+
+  PrepareConversionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/prepareConversion/dist/
+      Handler: prepareConversion.handler
+      Runtime: nodejs22.x
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          VIDEO_SOURCES_TABLE: !Ref VideoSourceCacheTableName
+          USERS_TABLE: !Ref UserConnectionsTableName
+          CONVERSION_SM_ARN: !Ref ConversionWorkflow
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource: !Ref ConversionWorkflow
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !Ref VideoSourceCacheTableArn
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+                - dynamodb:GetItem
+              Resource: !Ref UserConnectionsTableArn
+      Events:
+        Web:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FrontendApi
+            Path: /convert
+            Method: POST
+
+Outputs:
+  ApiBaseUrl:
+    Description: "API Gateway base (origin) for this REST API"
+    Value: !Sub "https://${FrontendApi}.execute-api.${AWS::Region}.amazonaws.com"
+  AppUrl:
+    Description: "SPA entry URL"
+    Value: !Sub "https://${FrontendApi}.execute-api.${AWS::Region}.amazonaws.com/${FrontEndDefaultStage}/"

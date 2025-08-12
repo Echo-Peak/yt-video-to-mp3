@@ -1,102 +1,173 @@
 {
-  "Comment": "YouTube conversion workflow",
-  "StartAt": "FetchMetadata",
+  "Comment": "Choose converter size, invoke converter, then run post-conversion update",
+  "StartAt": "DecideSize",
   "States": {
-    "FetchMetadata": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "FetchMetadata",
-        "Payload.$": "$"
-      },
-      "Next": "DecideResources"
-    },
-    "DecideResources": {
+    "DecideSize": {
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.Payload.duration",
-          "NumericGreaterThan": 1800,
-          "Next": "RunLargeTask"
+          "Variable": "$.size",
+          "StringEquals": "small",
+          "Next": "InvokeSmallConverter"
+        },
+        {
+          "Variable": "$.size",
+          "StringEquals": "medium",
+          "Next": "InvokeMediumConverter"
+        },
+        {
+          "Variable": "$.size",
+          "StringEquals": "large",
+          "Next": "InvokeLargeConverter"
         }
       ],
-      "Default": "RunSmallTask"
+      "Default": "SizeNotProvided"
     },
-    "RunSmallTask": {
+
+    "SizeNotProvided": {
+      "Type": "Fail",
+      "Error": "SizeDecisionError",
+      "Cause": "Input.size must be one of: small | medium | large"
+    },
+
+    "InvokeSmallConverter": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "LaunchType": "FARGATE",
-        "Cluster": "yt-mp3-cluster",
-        "TaskDefinition": "yt-task-small",
-        "NetworkConfiguration": {
-          "AwsvpcConfiguration": {
-            "Subnets": ["subnet-abc", "subnet-def"],
-            "SecurityGroups": ["sg-xyz"],
-            "AssignPublicIp": "ENABLED"
-          }
-        },
-        "Overrides": {
-          "ContainerOverrides": [
-            {
-              "Name": "yt-converter",
-              "Environment": [
-                {
-                  "Name": "YOUTUBE_URL",
-                  "Value.$": "$.Payload.url"
-                },
-                {
-                  "Name": "VIDEO_ID",
-                  "Value.$": "$.Payload.videoID"
-                },
-                {
-                  "Name": "CLIENT_ID",
-                  "Value.$": "$.Payload.clientID"
-                }
-              ]
-            }
-          ]
+        "FunctionName": "${ConverterSmallFunction.Arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": { "payload.$": "$.Payload" },
+      "ResultPath": "$.conversionResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "BackoffRate": 2.0,
+          "MaxAttempts": 3
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ],
+      "Next": "InvokePostConversion"
+    },
+
+    "InvokeMediumConverter": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConverterMediumFunction.Arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": { "payload.$": "$.Payload" },
+      "ResultPath": "$.conversionResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "BackoffRate": 2.0,
+          "MaxAttempts": 3
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ],
+      "Next": "InvokePostConversion"
+    },
+
+    "InvokeLargeConverter": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConverterLargeFunction.Arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": { "payload.$": "$.Payload" },
+      "ResultPath": "$.conversionResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "BackoffRate": 2.0,
+          "MaxAttempts": 3
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ],
+      "Next": "InvokePostConversion"
+    },
+
+    "InvokePostConversion": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PostConversionLambda.Arn}",
+        "Payload": {
+          "videoSourceUrl.$": "$.videoSourceUrl",
+          "clientId.$": "$.clientId",
+          "size.$": "$.size",
+          "conversionResult.$": "$.conversionResult.payload"
         }
       },
-      "End": true
-    },
-    "RunLargeTask": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::ecs:runTask.sync",
-      "Parameters": {
-        "LaunchType": "FARGATE",
-        "Cluster": "yt-mp3-cluster",
-        "TaskDefinition": "yt-task-large",
-        "NetworkConfiguration": {
-          "AwsvpcConfiguration": {
-            "Subnets": ["subnet-abc", "subnet-def"],
-            "SecurityGroups": ["sg-xyz"],
-            "AssignPublicIp": "ENABLED"
-          }
-        },
-        "Overrides": {
-          "ContainerOverrides": [
-            {
-              "Name": "yt-converter",
-              "Environment": [
-                {
-                  "Name": "YOUTUBE_URL",
-                  "Value.$": "$.Payload.url"
-                },
-                {
-                  "Name": "VIDEO_ID",
-                  "Value.$": "$.Payload.videoID"
-                },
-                {
-                  "Name": "CLIENT_ID",
-                  "Value.$": "$.Payload.clientID"
-                }
-              ]
-            }
-          ]
+      "ResultSelector": { "payload.$": "$.Payload" },
+      "ResultPath": "$.postUpdate",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "BackoffRate": 2.0,
+          "MaxAttempts": 3
         }
-      },
-      "End": true
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ],
+      "Next": "Success"
+    },
+
+    "Success": { "Type": "Succeed" },
+    "FailState": {
+      "Type": "Fail",
+      "Error": "ConversionFailed",
+      "Cause": "A task failed"
     }
   }
 }

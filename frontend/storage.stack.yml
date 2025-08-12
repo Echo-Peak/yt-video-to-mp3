@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  VideoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-video-${AWS::AccountId}
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }] # modern, no ACLs
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  VideoBucketName:
+    Description: Name of the S3 bucket for video storage
+    Value: !Ref VideoBucket
+  VideoBucketArn:
+    Description: ARN of the Video bucket
+    Value: !GetAtt VideoBucket.Arn

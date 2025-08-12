@@ -1,0 +1,11 @@
+@startuml
+title YT to MP3 user flow
+start
+:User goes to frontend site (API gateway);
+:User copies and paste a YT url. Must be a video URL (/watch?v=$videoID);
+:User sees "conversion in progress" UI;
+:User waits 30s - 5mins;
+:Browser triggers saveFile prompt;
+:User saves file;
+stop
+@enduml
