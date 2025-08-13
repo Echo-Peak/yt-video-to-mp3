@@ -1,99 +1,96 @@
+import { getConversionStatus, sendConversionRequest } from "./api";
+import { clientId } from "./clientId";
+import { ConversionState } from "./conversionState";
+import { ConversionResult, UIElements } from "./types";
+import { updateConversionStatus } from "./updateConversionState";
+import { youtubeUrlParser } from "./youtubeUrlParser";
+
 const $ = (id) => document.getElementById(id) as HTMLElement;
 const urlInput = $("urlInput");
 const form = $("convertForm");
 const convertBtn = $("convertBtn");
-const progress = $("progress");
-const bar = $("bar");
 const phaseChip = $("phase");
 const statusEl = $("status");
-const download = $("download");
 
-function isValidYouTubeUrl(value: string): boolean {
-  try {
-    const u = new URL(value.trim());
-    const host = u.hostname.replace(/^www\./, "");
-    if (host === "youtu.be") return u.pathname.length > 1;
-    if (host === "youtube.com" || host === "m.youtube.com")
-      return !!(u.searchParams.get("v") || u.pathname.startsWith("/shorts/"));
-    return false;
-  } catch {
-    return false;
-  }
-}
+const elements: UIElements = {
+  convertBtn,
+  urlInput,
+  phaseChip,
+  statusEl,
+};
 
-function setStatus(p, msg) {
-  phaseChip.textContent = labelForPhase(p);
-  statusEl.textContent = msg;
-  phaseChip.classList.remove("success", "error");
-  if (p === "success") phaseChip.classList.add("success");
-  if (p === "error") phaseChip.classList.add("error");
-}
+const onInputChange = (ev: Event) => {
+  const { valid } = youtubeUrlParser((ev.target as HTMLInputElement).value);
 
-function setProgress(pct) {
-  progress.setAttribute("aria-hidden", "false");
-  progress.classList.remove("indeterminate");
-  bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
-}
-
-function setIndeterminate(on) {
-  progress.setAttribute("aria-hidden", "false");
-  bar.style.width = on ? "38%" : bar.style.width;
-  progress.classList.toggle("indeterminate", !!on);
-}
-
-function labelForPhase(p) {
-  switch (p) {
-    case "idle":
-      return "Idle";
-    case "validating":
-      return "Validating";
-    case "queued":
-      return "Queued";
-    case "converting":
-      return "Converting";
-    case "uploading":
-      return "Uploading";
-    case "finalizing":
-      return "Finalizing";
-    case "success":
-      return "Done";
-    case "error":
-      return "Error";
-    default:
-      return "";
-  }
-}
-
-urlInput.addEventListener("input", () => {
-  const valid = isValidYouTubeUrl((urlInput as HTMLInputElement).value);
-  (convertBtn as HTMLButtonElement).disabled = !valid;
-  urlInput.setAttribute(
-    "aria-invalid",
-    String(!valid && (urlInput as HTMLInputElement).value.trim().length > 0)
-  );
   if (!valid) {
-    setStatus(
-      "idle",
-      (urlInput as HTMLInputElement).value
-        ? "Please enter a valid YouTube URL."
-        : "Waiting for URL…"
+    updateConversionStatus(
+      elements,
+      ConversionState.Idle,
+      "Please enter a valid YouTube URL."
     );
   } else {
-    setStatus("idle", "Ready to convert.");
+    updateConversionStatus(elements, ConversionState.Idle, "Ready to convert.");
   }
-});
+};
 
-form.addEventListener("submit", async (ev) => {
+let statusAwaiter: ReturnType<typeof setTimeout> | null = null;
+
+const startStatusAwaiter = async (videoId: string) => {
+  clearInterval(statusAwaiter!);
+  statusAwaiter = setInterval(async () => {
+    const status = (await getConversionStatus(
+      clientId.getId(),
+      videoId
+    )) as ConversionResult;
+    if (status.Progress === ConversionState.Error) {
+      console.log("Conversion error:", status);
+      clearInterval(statusAwaiter!);
+      updateConversionStatus(
+        elements,
+        ConversionState.Error,
+        "An error occurred during conversion. Please try again."
+      );
+      return;
+    }
+    if (status.Progress === ConversionState.Completed) {
+      clearInterval(statusAwaiter!);
+      updateConversionStatus(
+        elements,
+        ConversionState.Completed,
+        "Conversion completed successfully."
+      );
+      window.open(status.DownloadUrl, "_blank");
+    }
+  }, 5000);
+};
+
+const onSubmit = async (ev: SubmitEvent) => {
   ev.preventDefault();
   const url = (urlInput as HTMLInputElement).value.trim();
-  if (!isValidYouTubeUrl(url)) return;
-  (convertBtn as HTMLButtonElement).disabled = true;
-  (urlInput as HTMLInputElement).readOnly = true;
-  (download as HTMLAnchorElement).hidden = true;
+  const { valid, videoId } = youtubeUrlParser(url);
 
-  console.log("Form submitted with URL:", url);
-});
+  if (!valid) return;
 
-function sleep(ms) {
-  return new Promise((res) => setTimeout(res, ms));
-}
+  try {
+    await sendConversionRequest({
+      url,
+      clientId: clientId.getId(),
+    });
+    updateConversionStatus(
+      elements,
+      ConversionState.InProgress,
+      "Converting..."
+    );
+    await startStatusAwaiter(videoId);
+  } catch (error) {
+    console.error("Error during conversion request:", error);
+    updateConversionStatus(
+      elements,
+      ConversionState.Error,
+      "Failed to start conversion. Please try again."
+    );
+  }
+};
+
+urlInput.addEventListener("input", onInputChange);
+form.addEventListener("submit", onSubmit);
