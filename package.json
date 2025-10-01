@@ -9,6 +9,7 @@
     "build-queryStatus-function": "cd functions/queryStatus && npm run build",
     "build-functions": "npm run build-frontend-function && npm run build-converter-function && npm run build-prepareConversion-function && npm run build-queryStatus-function",
     "build-ui-app": "cd ui && vite build",
+    "dev:ui": "cd ui && vite",
     "prepack": "npm run build",
     "download-yt-dlp": "node  scripts/download-yt-dlp.js",
     "package": "npm run download-yt-dlp && npm run sam-package",
