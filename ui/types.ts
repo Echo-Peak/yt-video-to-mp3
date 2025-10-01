@@ -13,3 +13,12 @@ export type ConversionResult = {
   VideoId: string;
   Progress: ConversionState;
 };
+
+declare global {
+  interface Window {
+    lambdaEnv: {
+      HOSTED_UI_LOGIN_URL: string;
+      HOSTED_UI_LOGOUT_URL: string;
+    };
+  }
+}

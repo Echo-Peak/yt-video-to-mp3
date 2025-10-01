@@ -9,16 +9,17 @@ Resources:
       TemplateURL: ./conversion.stack.yml
       Parameters:
         VideoBucketName: !GetAtt StorageStack.Outputs.VideoBucketName
-        VideoBucketArn: !GetAtt StorageStack.Outputs.VideoBucketArn
         UserConnectionsTableName: !GetAtt DatabaseStack.Outputs.UserConnectionsTableName
         UserConnectionsTableArn: !GetAtt DatabaseStack.Outputs.UserConnectionsTableArn
-        VideoSourceCacheTableName: !GetAtt DatabaseStack.Outputs.VideoSourceCacheTableName
         VideoSourceCacheTableArn: !GetAtt DatabaseStack.Outputs.VideoSourceCacheTableArn
 
   DatabaseStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./database.stack.yml
+      Parameters:
+        UserConnectionsTableName: UserConnections
+        VideoSourceCacheTableName: VideoSourceCache
 
   FrontendStack:
     Type: AWS::CloudFormation::Stack
@@ -29,9 +30,12 @@ Resources:
         VideoSourceCacheTableArn: !GetAtt DatabaseStack.Outputs.VideoSourceCacheTableArn
         UserConnectionsTableName: !GetAtt DatabaseStack.Outputs.UserConnectionsTableName
         UserConnectionsTableArn: !GetAtt DatabaseStack.Outputs.UserConnectionsTableArn
-        ConversionWorkflow: !GetAtt DatabaseStack.Outputs.ConversionWorkflow
+        ConversionWorkflow: !GetAtt ConversionStack.Outputs.ConversionWorkflow
+        CognitoDomainPrefix: !Sub "yt2mp3-${AWS::AccountId}-${AWS::Region}"
 
   StorageStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: ./storage.stack.yml
+      Parameters:
+        VideoBucketName: !Sub ${AWS::StackName}-vid-${AWS::AccountId}

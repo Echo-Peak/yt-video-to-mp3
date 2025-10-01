@@ -1,16 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
+Description: YouTube Video to MP3 Converter - Step function conversion Workflow
 
 Parameters:
   VideoBucketName:
     Type: String
-  VideoBucketArn:
-    Type: String
   UserConnectionsTableName:
     Type: String
   UserConnectionsTableArn:
-    Type: String
-  VideoSourceCacheTableName:
     Type: String
   VideoSourceCacheTableArn:
     Type: String
@@ -103,5 +100,5 @@ Resources:
       - *CommonInlinePolicy
 
 Outputs:
-  ConversionWorkflowArn:
+  ConversionWorkflow:
     Value: !Ref ConversionWorkflow

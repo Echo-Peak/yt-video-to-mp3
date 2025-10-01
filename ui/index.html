@@ -4,42 +4,60 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Youtube Video to MP3 Converter</title>
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <body>
-  <main class="app-card" role="main">
-    <div class="brand">
-      <div class="logo" aria-hidden="true">♬</div>
-      <div>
-        <h1>YouTube → MP3</h1>
-        <p class="helper">Paste a YouTube URL, then hit <strong>Convert</strong>.</p>
-      </div>
-    </div>
-
-    <form id="convertForm" class="stack" novalidate>
-      <div class="control-row">
-        <label for="urlInput">YouTube URL</label>
-        <input id="urlInput" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="url" spellcheck="false" aria-invalid="false" required />
-        <button class="primary" id="convertBtn" type="submit" disabled>Convert</button>
-      </div>
-
-      <div class="status-row" aria-live="polite">
-        <div class="progress" id="progress" aria-hidden="true">
-          <div class="bar" id="bar"></div>
-        </div>
-        <div class="status">
-          <span id="phase" class="chip">Idle</span>
-          <span id="status">Waiting for URL…</span>
+    <header>
+      <button id="login-button">Login</button>
+    </header>
+    <main class="app-card" role="main">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">♬</div>
+        <div>
+          <h1>YouTube → MP3</h1>
+          <p class="helper">
+            Paste a YouTube URL, then hit <strong>Convert</strong>.
+          </p>
         </div>
       </div>
 
-      <div class="footer">
-        <small class="helper">This is a front‑end UI. Hook it to your backend <code>/convert</code> to make it live.</small>
-        <a id="download" href="#" download hidden>Download MP3</a>
-      </div>
-    </form>
-  </main>
+      <form id="convertForm" class="stack" novalidate>
+        <div class="control-row">
+          <label for="urlInput">YouTube URL</label>
+          <input
+            id="urlInput"
+            type="url"
+            inputmode="url"
+            placeholder="https://www.youtube.com/watch?v=…"
+            autocomplete="url"
+            spellcheck="false"
+            aria-invalid="false"
+            required
+          />
+          <button class="primary" id="convertBtn" type="submit" disabled>
+            Convert
+          </button>
+        </div>
+
+        <div class="status-row" aria-live="polite">
+          <div class="progress" id="progress" aria-hidden="true">
+            <div class="bar" id="bar"></div>
+          </div>
+          <div class="status">
+            <span id="phase" class="chip">Idle</span>
+            <span id="status">Waiting for URL…</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          <small class="helper"
+            >This is a front‑end UI. Hook it to your backend
+            <code>/convert</code> to make it live.</small
+          >
+          <a id="download" href="#" download hidden>Download MP3</a>
+        </div>
+      </form>
+    </main>
     <script type="module" src="/index.ts"></script>
   </body>
 </html>

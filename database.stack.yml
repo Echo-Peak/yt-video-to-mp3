@@ -2,11 +2,17 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: DynamoDB table for tracking video processing state
 
+Parameters:
+  UserConnectionsTableName:
+    Type: String
+  VideoSourceCacheTableName:
+    Type: String
+
 Resources:
   UserConnectionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: UserConnections
+      TableName: !Ref UserConnectionsTableName
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: ClientId
@@ -27,14 +33,14 @@ Resources:
   VideoSourceCacheTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: VideoSourceCache
+      TableName: !Ref VideoSourceCacheTableName
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: VideoId
           AttributeType: S
       KeySchema:
         - AttributeName: VideoId
-          KeyType: RANGE
+          KeyType: HASH
       SSESpecification:
         SSEEnabled: false
 

@@ -1,11 +1,15 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
+Description: YouTube Video to MP3 Converter - S3 Storage Configuration
+
+Parameters:
+  VideoBucketName: { Type: String }
 
 Resources:
   VideoBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${AWS::StackName}-video-${AWS::AccountId}
+      BucketName: !Ref VideoBucketName
       OwnershipControls:
         Rules: [{ ObjectOwnership: BucketOwnerEnforced }] # modern, no ACLs
       PublicAccessBlockConfiguration:

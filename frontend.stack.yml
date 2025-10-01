@@ -13,47 +13,116 @@ Parameters:
     Type: String
   ConversionWorkflow:
     Type: String
+  CognitoDomainPrefix:
+    Type: String
 
 Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: yt2mp3-users
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+
+  ManagedLoginDefaultBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientId: !Ref UserPoolClient
+      UseCognitoProvidedValues: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: web-spa
+      GenerateSecret: false
+      AllowedOAuthFlows: [code]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes: [openid, email, profile]
+      CallbackURLs:
+        - !Sub "https://${FrontendApi}.execute-api.${AWS::Region}.amazonaws.com/staging/auth/callback"
+      LogoutURLs:
+        - !Sub "https://${FrontendApi}.execute-api.${AWS::Region}.amazonaws.com/staging/auth/logout"
+      SupportedIdentityProviders: [COGNITO]
+      PreventUserExistenceErrors: ENABLED
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Ref CognitoDomainPrefix
+      ManagedLoginVersion: 2
+
   FrontendApi:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: Staging
+      StageName: staging
       EndpointConfiguration: REGIONAL
       Name: YTToMp3ConverterApi
+      Cors:
+        AllowMethods: "'GET,POST'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
       Auth:
-        ApiKeyRequired: true
-        UsagePlan:
-          CreateUsagePlan: PER_API
-          Throttle:
-            BurstLimit: 10
-            RateLimit: 15
-
-  FrontEndDefaultStage:
-    Type: AWS::ApiGatewayV2::Stage
-    Properties:
-      ApiId: !Ref FrontendApi
-      StageName: Staging
-      AutoDeploy: true
+        Authorizers:
+          CognitoAuth:
+            UserPoolArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPool}
+            Identity:
+              Header: Authorization
+        DefaultAuthorizer: CognitoAuth
 
   SinglePageAppLambda:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: functions/frontend/dist/
-      Handler: serveStaticSite.handler
+      CodeUri: functions/frontend
+      Handler: dist/serveUI.handler
       Runtime: nodejs22.x
       MemorySize: 128
       Timeout: 10
       Environment:
         Variables:
-          API_URL: !Ref FrontendApi
+          COGNITO_HOSTED_UI_DOMAIN: !Sub >
+            https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com
+          COGNITO_CLIENT_ID: !Sub "/${AWS::StackName}/oauthClientId"
       Events:
-        Web:
+        Root:
           Type: Api
           Properties:
             RestApiId: !Ref FrontendApi
             Path: /
             Method: GET
+            Auth: { Authorizer: NONE }
+        AuthCallback:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FrontendApi
+            Path: /auth/callback
+            Method: GET
+            Auth: { Authorizer: NONE }
+        AuthLogout:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FrontendApi
+            Path: /auth/logout
+            Method: GET
+            Auth: { Authorizer: NONE }
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/oauthClientId"
+
+  OAuthClientIdParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${AWS::StackName}/oauthClientId"
+      Type: String
+      Value: !Ref UserPoolClient
 
   QueryStatusLambda:
     Type: AWS::Serverless::Function
@@ -64,12 +133,12 @@ Resources:
       MemorySize: 128
       Timeout: 10
       Events:
-        Web:
+        Status:
           Type: Api
           Properties:
             RestApiId: !Ref FrontendApi
-            Path: /status
-            Method: POST
+            Path: /status/{clientId}/{videoId}
+            Method: GET
       Policies:
         - AWSLambdaBasicExecutionRole
 
@@ -104,7 +173,7 @@ Resources:
                 - dynamodb:GetItem
               Resource: !Ref UserConnectionsTableArn
       Events:
-        Web:
+        Convert:
           Type: Api
           Properties:
             RestApiId: !Ref FrontendApi
@@ -117,4 +186,4 @@ Outputs:
     Value: !Sub "https://${FrontendApi}.execute-api.${AWS::Region}.amazonaws.com"
   AppUrl:
     Description: "SPA entry URL"
-    Value: !Sub "https://${FrontendApi}.execute-api.${AWS::Region}.amazonaws.com/${FrontEndDefaultStage}/"
+    Value: !Sub "https://${FrontendApi}.execute-api.${AWS::Region}.amazonaws.com/staging"

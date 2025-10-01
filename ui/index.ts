@@ -11,6 +11,7 @@ const form = $("convertForm");
 const convertBtn = $("convertBtn");
 const phaseChip = $("phase");
 const statusEl = $("status");
+const loginButton = $("login-button");
 
 const elements: UIElements = {
   convertBtn,
@@ -92,5 +93,10 @@ const onSubmit = async (ev: SubmitEvent) => {
   }
 };
 
+const handleLogin = () => {
+  window.open(window.lambdaEnv.HOSTED_UI_LOGIN_URL, "_self");
+};
+
 urlInput.addEventListener("input", onInputChange);
 form.addEventListener("submit", onSubmit);
+loginButton.addEventListener("click", handleLogin);
