@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: DynamoDB table for tracking video processing state
+
+Parameters:
+  UserConnectionsTableName:
+    Type: String
+  VideoSourceCacheTableName:
+    Type: String
+
+Resources:
+  UserConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref UserConnectionsTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ClientId
+          AttributeType: S
+        - AttributeName: VideoId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ClientId
+          KeyType: HASH
+        - AttributeName: VideoId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ExpireAt
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  VideoSourceCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref VideoSourceCacheTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: VideoId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: VideoId
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: false
+
+Outputs:
+  UserConnectionsTableName:
+    Description: Name of the DynamoDB table for user connections
+    Value: !Ref UserConnectionsTable
+  UserConnectionsTableArn:
+    Description: ARN of the User Connections table
+    Value: !GetAtt UserConnectionsTable.Arn
+
+  VideoSourceCacheTableName:
+    Description: Name of the Video Source Cache table
+    Value: !Ref VideoSourceCacheTable
+  VideoSourceCacheTableArn:
+    Description: ARN of the Video Source Cache table
+    Value: !GetAtt VideoSourceCacheTable.Arn

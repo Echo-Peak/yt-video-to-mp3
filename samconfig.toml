@@ -1,0 +1,11 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "yt-to-mp3-converter"
+resolve_s3 = false
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_AUTO_EXPAND CAPABILITY_IAM"
+image_repositories = []
+fail_on_empty_changeset = false
+disable_rollback = false

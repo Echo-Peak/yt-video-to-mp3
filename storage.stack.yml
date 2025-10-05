@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: YouTube Video to MP3 Converter - S3 Storage Configuration
+
+Parameters:
+  VideoBucketName: { Type: String }
+
+Resources:
+  VideoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref VideoBucketName
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }] # modern, no ACLs
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  VideoBucketName:
+    Description: Name of the S3 bucket for video storage
+    Value: !Ref VideoBucket
+  VideoBucketArn:
+    Description: ARN of the Video bucket
+    Value: !GetAtt VideoBucket.Arn

@@ -1,0 +1,61 @@
+name: Build and Package Application
+on:
+  push:
+    branches: [main, develop]
+
+env:
+  STATIC_BUCKET: ${{ secrets.AWS_ACCOUNT_ID }}.yt2mp3.com
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "yarn"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Add YT_DLP to functions
+        run: |
+          curl -Lfo yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/2025.09.26/yt-dlp_linux
+          chmod +x yt-dlp
+          cp yt-dlp functions/prepareConversion/dist
+          cp yt-dlp functions/converter/dist
+
+      - name: Add FFmpeg to functions
+        run: |
+          curl -Lfo ffmpeg https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar -xJf ffmpeg
+          mv ffmpeg-*/ffmpeg ./ffmpeg
+          chmod +x ffmpeg
+          cp ffmpeg functions/converter/dist
+
+      - name: Deploy static site to S3
+        run: |
+          aws s3 sync ui/build/ s3://${{ env.STATIC_BUCKET }} --delete
+
+      - name: Validate SAM templates
+        run: |
+          sam validate --template-file template.yaml --lint
+          sam validate --template-file backend.stack.yml --lint
+          sam validate --template-file conversion.stack.yml --lint
+          sam validate --template-file storage.stack.yml --lint
+          sam validate --template-file database.stack.yml --lint
+
+      - name: Deploy infrastructure
+        run: sam deploy --template-file template.yaml
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "us-east-1"
