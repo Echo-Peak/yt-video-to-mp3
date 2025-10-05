@@ -1,0 +1,173 @@
+{
+  "Comment": "Choose converter size, invoke converter, then run post-conversion update",
+  "StartAt": "DecideSize",
+  "States": {
+    "DecideSize": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.size",
+          "StringEquals": "small",
+          "Next": "InvokeSmallConverter"
+        },
+        {
+          "Variable": "$.size",
+          "StringEquals": "medium",
+          "Next": "InvokeMediumConverter"
+        },
+        {
+          "Variable": "$.size",
+          "StringEquals": "large",
+          "Next": "InvokeLargeConverter"
+        }
+      ],
+      "Default": "SizeNotProvided"
+    },
+
+    "SizeNotProvided": {
+      "Type": "Fail",
+      "Error": "SizeDecisionError",
+      "Cause": "Input.size must be one of: small | medium | large"
+    },
+
+    "InvokeSmallConverter": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConverterSmallFunction.Arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": { "payload.$": "$.Payload" },
+      "ResultPath": "$.conversionResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "BackoffRate": 2.0,
+          "MaxAttempts": 3
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ],
+      "Next": "InvokePostConversion"
+    },
+
+    "InvokeMediumConverter": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConverterMediumFunction.Arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": { "payload.$": "$.Payload" },
+      "ResultPath": "$.conversionResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "BackoffRate": 2.0,
+          "MaxAttempts": 3
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ],
+      "Next": "InvokePostConversion"
+    },
+
+    "InvokeLargeConverter": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ConverterLargeFunction.Arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": { "payload.$": "$.Payload" },
+      "ResultPath": "$.conversionResult",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "BackoffRate": 2.0,
+          "MaxAttempts": 3
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ],
+      "Next": "InvokePostConversion"
+    },
+
+    "InvokePostConversion": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PostConversionLambda.Arn}",
+        "Payload": {
+          "videoSourceUrl.$": "$.videoSourceUrl",
+          "clientId.$": "$.clientId",
+          "size.$": "$.size",
+          "conversionResult.$": "$.conversionResult.payload"
+        }
+      },
+      "ResultSelector": { "payload.$": "$.Payload" },
+      "ResultPath": "$.postUpdate",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 2,
+          "BackoffRate": 2.0,
+          "MaxAttempts": 3
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "FailState"
+        }
+      ],
+      "Next": "Success"
+    },
+
+    "Success": { "Type": "Succeed" },
+    "FailState": {
+      "Type": "Fail",
+      "Error": "ConversionFailed",
+      "Cause": "A task failed"
+    }
+  }
+}

@@ -1,0 +1,61 @@
+@startuml
+title YT to MP3 technical - High level
+| Front end - API gateway |
+:User request / endpoint of frontend API gateway resource;
+:GET / intergration response;
+
+| Front-end - Lambda |
+:return compiled HTML file;
+detach
+
+| Backend API - API gateway|
+:User makes request for YT video to be converted;
+:Client sends YT url, generated clientID;
+
+|Backend API - Download function|
+:Download JSON dump of YT video url;
+:Store JSON dump of YT video to DynomoDB as a cache;
+:Add entry in DynomoDB for user/clientID to store progress state of conversion status;
+
+| DynomoDB |
+:Store video json to videoSources table with PK of $videoID;
+:Store progress to user table table with PK of $clientID-$videoID;
+
+|Backend API - Download function|
+:Trigger convertsion step function;
+:Pass in $clientID, YT JSON dump;
+
+| Backend API - Step function |
+:fetch video length from JSON dump;
+switch (video length)
+case ( less than 5 mins )
+  :Trigger small varient of converter lambda function;
+case ( greater than 5 mins and less than 15 mins ) 
+  :Trigger medium varient of converter lambda function;
+case ( greater than 15 mins )
+  :Trigger large varient of converter lambda function;
+endswitch
+:On converter lambda finish;
+:Update DynomoDB user table;
+
+| DynomoDB |
+:Store S3 signed URL of MP3 to user table via PK $clientID-$videoID;
+:Set progress to complete;
+detach
+
+|Front end - API gateway - GET /status |
+:Check /status of conversion;
+
+| DynomoDB |
+:Get progress;
+
+|Front end - API gateway - GET /status |
+if (progress is complete) then (yes)
+:Download file as application/audio;
+else (no)
+if (progress has not changed X number of mins or there is some other error) then (yes)
+:Return error response;
+end if
+
+
+@enduml

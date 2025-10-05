@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: YouTube Video to MP3 Converter - Step function conversion Workflow
+
+Parameters:
+  VideoBucketName:
+    Type: String
+  UserConnectionsTableName:
+    Type: String
+  UserConnectionsTableArn:
+    Type: String
+  VideoSourceCacheTableArn:
+    Type: String
+
+Globals:
+  Function:
+    CodeUri: functions/converter/dist/
+    Handler: converter.handler
+    Runtime: nodejs22.x
+    Environment:
+      Variables:
+        USERS_TABLE: !Ref UserConnectionsTableName
+        S3_VIDEO_BUCKET: !Ref VideoBucketName
+
+Metadata:
+  Anchors:
+    CommonInlinePolicy: &CommonInlinePolicy
+      Statement:
+        - Effect: Allow
+          Action: ["s3:GetObject", "s3:PutObject"]
+          Resource: !Sub arn:aws:s3:::${VideoBucketName}/*
+        - Effect: Allow
+          Action:
+            ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
+          Resource:
+            - !Ref UserConnectionsTableArn
+            - !Ref VideoSourceCacheTableArn
+
+Resources:
+  ConversionWorkflow:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: YtConversionStateMachine
+      DefinitionUri: statemachine/conversion.asl.json
+      DefinitionSubstitutions:
+        SmallConverterArn: !GetAtt ConverterSmallFunction.Arn
+        MediumConverterArn: !GetAtt ConverterMediumFunction.Arn
+        LargeConverterArn: !GetAtt ConverterLargeFunction.Arn
+        PostConversionArn: !GetAtt PostConversionLambda.Arn
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource:
+                - !GetAtt ConverterSmallFunction.Arn
+                - !GetAtt ConverterMediumFunction.Arn
+                - !GetAtt ConverterLargeFunction.Arn
+                - !GetAtt PostConversionLambda.Arn
+    Logging:
+      Level: ALL
+      IncludeExecutionData: true
+
+  PostConversionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/converter/dist/
+      Handler: postConvert.handler
+      Runtime: nodejs22.x
+      MemorySize: 256
+      Timeout: 30
+    Policies:
+      - AWSLambdaBasicExecutionRole
+      - *CommonInlinePolicy
+
+  ConverterSmallFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      MemorySize: 128
+      Timeout: 60
+    Policies:
+      - AWSLambdaBasicExecutionRole
+      - *CommonInlinePolicy
+
+  ConverterMediumFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      MemorySize: 1024
+      Timeout: 120
+    Policies:
+      - AWSLambdaBasicExecutionRole
+      - *CommonInlinePolicy
+
+  ConverterLargeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      MemorySize: 3072
+      Timeout: 300
+    Policies:
+      - AWSLambdaBasicExecutionRole
+      - *CommonInlinePolicy
+
+Outputs:
+  ConversionWorkflow:
+    Value: !Ref ConversionWorkflow

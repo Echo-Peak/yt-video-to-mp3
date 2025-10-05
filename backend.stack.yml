@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Backend end for YouTube Video to MP3 Converter
+
+Parameters:
+  VideoSourceCacheTableName:
+    Type: String
+  VideoSourceCacheTableArn:
+    Type: String
+  UserConnectionsTableName:
+    Type: String
+  UserConnectionsTableArn:
+    Type: String
+  ConversionWorkflow:
+    Type: String
+  ExistingUserPoolArn:
+    Type: String
+  ExistingAppClientId:
+    Type: String
+  CognitoHostedUIDomain:
+    Type: String
+  CloudFrontDomain:
+    Type: String
+
+Resources:
+  BackendApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: staging
+      EndpointConfiguration: REGIONAL
+      Name: YTToMp3BackendApi
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Requested-With'"
+        AllowOrigin: !Sub "'${CloudFrontDomain}'"
+      Auth:
+        Authorizers:
+          CognitoAuth:
+            UserPoolArn: !Ref ExistingUserPoolArn
+            Identity:
+              Header: Authorization
+        DefaultAuthorizer: CognitoAuth
+
+  OAuthClientIdParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${AWS::StackName}/oauthClientId"
+      Type: String
+      Value: !Ref ExistingAppClientId
+
+  QueryStatusLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/queryStatus/dist/
+      Handler: queryStatus.handler
+      Runtime: nodejs22.x
+      MemorySize: 128
+      Timeout: 10
+      Events:
+        Status:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BackendApi
+            Path: /status/{clientId}/{videoId}
+            Method: GET
+      Policies:
+        - AWSLambdaBasicExecutionRole
+
+  PrepareConversionLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/prepareConversion
+      Handler: dist/prepareConversion.handler
+      Runtime: nodejs22.x
+      MemorySize: 512
+      Timeout: 15
+      Environment:
+        Variables:
+          VIDEO_SOURCES_TABLE: !Ref VideoSourceCacheTableName
+          USERS_TABLE: !Ref UserConnectionsTableName
+          CONVERSION_SM_ARN: !Ref ConversionWorkflow
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: ["states:StartExecution"]
+              Resource: !Ref ConversionWorkflow
+            - Effect: Allow
+              Action: ["dynamodb:PutItem"]
+              Resource: !Ref VideoSourceCacheTableArn
+            - Effect: Allow
+              Action: ["dynamodb:PutItem", "dynamodb:GetItem"]
+              Resource: !Ref UserConnectionsTableArn
+      Events:
+        Convert:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BackendApi
+            Path: /convert
+            Method: POST
+Outputs:
+  ApiBaseUrl:
+    Description: "API Gateway base (origin)"
+    Value: !Sub "https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com"
+  AppUrl:
+    Description: "SPA entry URL"
+    Value: !Sub "https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/staging"
+  HostedUILoginExample:
+    Description:
+      "Example Hosted UI /authorize URL for your SPA (replace redirect_uri as
+      needed)"
+    Value: !Sub "${CognitoHostedUIDomain}/oauth2/authorize?client_id=${ExistingAppClientId}&response_type=code&scope=openid%20email%20profile&redirect_uri=${CloudFrontDomain}%2Fauth-callback.html&state=xyz"

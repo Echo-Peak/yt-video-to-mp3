@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Youtube Video to MP3 Converter
+
+Parameters:
+  CloudFrontDomain:
+    Type: String
+  ExistingUserPoolArn:
+    Type: String
+  ExistingAppClientId:
+    Type: String
+  CognitoHostedUIDomain:
+    Type: String
+
+Resources:
+  ConversionStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./conversion.stack.yml
+      Parameters:
+        VideoBucketName: !GetAtt StorageStack.Outputs.VideoBucketName
+        UserConnectionsTableName: !GetAtt DatabaseStack.Outputs.UserConnectionsTableName
+        UserConnectionsTableArn: !GetAtt DatabaseStack.Outputs.UserConnectionsTableArn
+        VideoSourceCacheTableArn: !GetAtt DatabaseStack.Outputs.VideoSourceCacheTableArn
+
+  DatabaseStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./database.stack.yml
+      Parameters:
+        UserConnectionsTableName: UserConnections
+        VideoSourceCacheTableName: VideoSourceCache
+
+  BackendStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./backend.stack.yml
+      Parameters:
+        VideoSourceCacheTableName: !GetAtt DatabaseStack.Outputs.VideoSourceCacheTableName
+        VideoSourceCacheTableArn: !GetAtt DatabaseStack.Outputs.VideoSourceCacheTableArn
+        UserConnectionsTableName: !GetAtt DatabaseStack.Outputs.UserConnectionsTableName
+        UserConnectionsTableArn: !GetAtt DatabaseStack.Outputs.UserConnectionsTableArn
+        ConversionWorkflow: !GetAtt ConversionStack.Outputs.ConversionWorkflow
+        CloudFrontDomain: !Ref CloudFrontDomain
+        ExistingUserPoolArn: !Ref ExistingUserPoolArn
+        ExistingAppClientId: !Ref ExistingAppClientId
+        CognitoHostedUIDomain: !Ref CognitoHostedUIDomain
+
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./storage.stack.yml
+      Parameters:
+        VideoBucketName: !Sub ${AWS::StackName}-vid-${AWS::AccountId}
